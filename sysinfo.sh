@@ -53,3 +53,59 @@ echo "Load/Core Ratio: $load_ratio"
 result=$(echo "$memory_usage $load_ratio" | ./resource_check)
 
 echo "$result"
+
+# Ambil status dari hasil resource_check
+memory_status=$(echo "$result" | awk '/Metric 1/ {print $NF}')
+load_status=$(echo "$result" | awk '/Metric 2/ {print $NF}')
+
+# Ambil informasi sistem untuk laporan
+os_info=$(get_os_info)
+users=$(get_regular_users)
+processes=$(get_running_processes)
+virtualization=$(get_virtualization)
+
+# Status virtualisasi
+if [[ "$virtualization" == *"Terdeteksi"* ]]; then
+    virt_status="PASS"
+else
+    virt_status="FAIL"
+fi
+
+# Membuat laporan
+report_file="sysinfo_report.txt"
+
+{
+    echo "================================================================================"
+    echo "                        TUGAS 1 OS - KELOMPOK B3"
+    echo "================================================================================"
+
+    printf "%-18s | %-25s | %-8s | %s\n" \
+        "Check Category" "Item" "Status" "Details"
+
+    echo "--------------------------------------------------------------------------------"
+
+    printf "%-18s | %-25s | %-8s | %s\n" \
+        "OS" "$os_info" "PASS" "OS dan Kernel"
+
+    printf "%-18s | %-25s | %-8s | %s\n" \
+        "Users" "$users akun" "PASS" "Regular accounts"
+
+    printf "%-18s | %-25s | %-8s | %s\n" \
+        "Processes" "$processes proses" "PASS" "Running processes"
+
+    printf "%-18s | %-25s | %-8s | %s\n" \
+        "Virtualization" "$virtualization" "$virt_status" "Hypervisor"
+
+    printf "%-18s | %-25s | %-8s | %s\n" \
+        "Memory" "$memory_usage%" "$memory_status" "Memory usage"
+
+    printf "%-18s | %-25s | %-8s | %s\n" \
+        "Load/Core" "$load_ratio" "$load_status" "Load $load_average / $cores cores"
+
+    echo "================================================================================"
+
+} > "$report_file"
+
+echo ""
+echo "Menyimpan laporan ke $report_file..."
+echo "Laporan berhasil disimpan."
