@@ -45,11 +45,7 @@ info_vm() {
     local vcpu=$(VBoxManage showvminfo "$vm_name" --machinereadable | grep "^cpus=" | cut -d'=' -f2)
     local state=$(VBoxManage showvminfo "$vm_name" --machinereadable | grep "^VMState=" | cut -d'=' -f2 | tr -d '"')
 
-    if [ "$state" == "running" ]; then
-        status_str="running"
-    else
-        status_str="powered off"
-    fi
+   status_str="$state"
 
     echo "  RAM dialokasikan : $ram MB"
     echo "  vCPU dialokasikan : $vcpu"
@@ -86,15 +82,52 @@ stop_vm() {
         exit 1
     fi
 
+    if ! VBoxManage showvminfo "$vm_name" >/dev/null 2>&1; then
+        echo "Error: Virtual Machine '$vm_name' tidak ditemukan."
+        exit 1
+    fi
+
+    local state
+    state=$(VBoxManage showvminfo "$vm_name" --machinereadable \
+        | grep "^VMState=" \
+        | cut -d'=' -f2 \
+        | tr -d '"')
+
+    if [ "$state" != "running" ]; then
+        echo "VM '$vm_name' tidak sedang berjalan. Status: $state"
+        return 1
+    fi
+
     print_header
     echo "  Mematikan VM '$vm_name' secara aman..."
-    
-    if VBoxManage controlvm "$vm_name" acpipowerbutton >/dev/null 2>&1; then
-        echo "  VM '$vm_name' berhasil dimatikan. Status: powered off"
-    else
-        echo "  Gagal mematikan VM '$vm_name' (mungkin VM belum menyala)."
+
+    if ! VBoxManage controlvm "$vm_name" acpipowerbutton >/dev/null 2>&1; then
+        echo "  Gagal mengirim sinyal shutdown ke VM '$vm_name'."
+        return 1
     fi
-    echo " "
+
+    local max_wait=60
+    local elapsed=0
+
+    while [ "$elapsed" -lt "$max_wait" ]; do
+        state=$(VBoxManage showvminfo "$vm_name" --machinereadable \
+            | grep "^VMState=" \
+            | cut -d'=' -f2 \
+            | tr -d '"')
+
+        if [ "$state" = "poweroff" ]; then
+            echo "  VM '$vm_name' berhasil dimatikan. Status: powered off"
+            echo " "
+            return 0
+        fi
+
+        sleep 2
+        elapsed=$((elapsed + 2))
+    done
+
+    echo "  Shutdown telah dikirim, tetapi VM belum mati setelah ${max_wait} detik."
+    echo "  Status terakhir: $state"
+    return 1
 }
 
 snapshot_create() {
