@@ -8,7 +8,7 @@ get_os_info(){
 }
 
 get_regular_users(){
-    awk -F: '$3 >= 1000 && $3 <6000 {count++} END {print count+0}' /etc/passwd
+    awk -F: '$3 >= 1000 && $3 < 6000 {count++} END {print count+0}' /etc/passwd
 }
 
 get_running_processes(){
@@ -18,60 +18,109 @@ get_running_processes(){
 get_virtualization(){
     local virt
     virt=$(systemd-detect-virt 2>/dev/null)
+
     case "$virt" in
-        oracle) echo "Terdeteksi (VirtualBox)" ;;
-        none|"") echo "Tidak terdeteksi (kemungkinan mesin fisik)" ;;
-        *) echo "Terdeteksi ($virt)";; 
+        oracle)
+            echo "Terdeteksi (VirtualBox)"
+            ;;
+        none|"")
+            echo "Tidak terdeteksi (kemungkinan mesin fisik)"
+            ;;
+        *)
+            echo "Terdeteksi ($virt)"
+            ;;
     esac
 }
 
+# Fitur tambahan: VM Uptime
+get_uptime(){
+    uptime -p | sed 's/^up //'
+}
+
+
+# =========================
+# INFORMASI SISTEM
+# =========================
+
 echo "OS/Kernel: $(get_os_info)"
 echo "Akun pengguna: $(get_regular_users) akun"
-echo "Prose berjalan: $(get_running_processes) proses"
+echo "Proses berjalan: $(get_running_processes) proses"
 echo "Virtualisasi: $(get_virtualization)"
 
-# Metric 1: Memory Usage
+
+# =========================
+# METRIC 1: MEMORY USAGE
+# =========================
+
 total=$(free -m | awk '/Mem:/ {print $2}')
 available=$(free -m | awk '/Mem:/ {print $7}')
 
-# Ini rumusnya perlu di cross-check lagi karena gak diinfoin persis di Brief
-memory_usage=$(awk "BEGIN {printf \"%.2f\", (($total - $available) / $total) * 100}")
+memory_usage=$(awk "BEGIN {
+    printf \"%.2f\", (($total - $available) / $total) * 100
+}")
 
 echo "Memory Usage: $memory_usage%"
 
-# Metric 2: Load Average vs Number of Cores
+
+# =========================
+# METRIC 2: LOAD / CORE
+# =========================
+
 load_average=$(awk '{print $1}' /proc/loadavg)
 cores=$(nproc)
 
-load_ratio=$(awk "BEGIN {printf \"%.2f\", $load_average / $cores}")
+load_ratio=$(awk "BEGIN {
+    printf \"%.2f\", $load_average / $cores
+}")
 
 echo "Load Average: $load_average"
 echo "CPU Cores: $cores"
 echo "Load/Core Ratio: $load_ratio"
 
-# Send metrics to resource_check
+
+# =========================
+# RESOURCE CHECK
+# =========================
+
 result=$(echo "$memory_usage $load_ratio" | ./resource_check)
 
 echo "$result"
 
-# Ambil status dari hasil resource_check
 memory_status=$(echo "$result" | awk '/Metric 1/ {print $NF}')
 load_status=$(echo "$result" | awk '/Metric 2/ {print $NF}')
 
-# Ambil informasi sistem untuk laporan
+
+# =========================
+# FITUR TAMBAHAN
+# =========================
+
+uptime_info=$(get_uptime)
+
+echo ""
+echo "Fitur tambahan:"
+echo "Uptime VM: $uptime_info"
+
+
+# =========================
+# DATA UNTUK REPORT
+# =========================
+
 os_info=$(get_os_info)
 users=$(get_regular_users)
 processes=$(get_running_processes)
 virtualization=$(get_virtualization)
 
-# Status virtualisasi
 if [[ "$virtualization" == *"Terdeteksi"* ]]; then
     virt_status="PASS"
 else
     virt_status="FAIL"
 fi
 
-# Membuat laporan
+
+# =========================
+# MEMBUAT REPORT
+# =========================
+
 report_file="sysinfo_report.txt"
 
 {
@@ -101,6 +150,9 @@ report_file="sysinfo_report.txt"
 
     printf "%-18s | %-25s | %-8s | %s\n" \
         "Load/Core" "$load_ratio" "$load_status" "Load $load_average / $cores cores"
+
+    printf "%-18s | %-25s | %-8s | %s\n" \
+        "Uptime" "$uptime_info" "PASS" "VM uptime"
 
     echo "================================================================================"
 
