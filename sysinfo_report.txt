@@ -1,0 +1,12 @@
+================================================================================
+                        TUGAS 1 OS - KELOMPOK B3
+================================================================================
+Check Category     | Item                      | Status   | Details
+--------------------------------------------------------------------------------
+OS                 | Ubuntu 26.04 LTS (Kernel 7.0.0-30-generic) | PASS     | OS dan Kernel
+Users              | 1 akun                    | PASS     | Regular accounts
+Processes          | 111 proses                | PASS     | Running processes
+Virtualization     | Terdeteksi (VirtualBox)   | PASS     | Hypervisor
+Memory             | 13.39%                    | PASS     | Memory usage
+Load/Core          | 0.07                      | PASS     | Load 0.14 / 2 cores
+================================================================================
