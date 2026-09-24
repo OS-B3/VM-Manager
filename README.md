@@ -1,53 +1,101 @@
-4
+# VM Manager - Kelompok B3
 
-# VM-Manager
+VM Manager adalah program sederhana untuk mengendalikan Virtual Machine (VM) VirtualBox dari sisi host dan memantau kondisi sistem Ubuntu dari sisi guest. Proyek ini dibuat untuk Tugas 1 mata kuliah Sistem Operasi, Varian B.
 
-# README Bagian Dyah
+## Pembagian Tugas
 
-## 1. Snapshot (vm_ctl.sh — HOST)
+| Anggota | NPM | Tugas utama |
+|---|---:|---|
+| Faris Salman Azhari | 2506615223 | Mengintegrasikan seluruh komponen, membuat `sysinfo_report.txt`, menambahkan fitur uptime VM, dan menyusun laporan tugas. |
+| Syabil Wafi Ahdi | 2506657371 | Mengembangkan lifecycle VM pada `vm_ctl.sh`: melihat daftar dan informasi VM, serta menyalakan dan mematikan VM dengan aman. |
+| Dyah Zhafira Wibowo | 2506623723 | Mengembangkan fitur snapshot pada host serta pemeriksaan informasi sistem dasar pada guest. |
+| Silvia Lalita Damayanti | 2506621863 | Mengembangkan metrik resource Varian B, `resource_check.c`, dan komunikasi data melalui pipe/standard input. |
+
+## Struktur Program
+
+| Berkas | Lingkungan | Fungsi |
+|---|---|---|
+| `vm_ctl.sh` | Host | Mengendalikan VM melalui `VBoxManage`: `list`, `info`, `start`, `stop`, `snapshot create`, dan `snapshot list`. |
+| `sysinfo.sh` | Guest | Mengambil informasi sistem, menghitung metrik, menjalankan pemeriksaan resource, menampilkan uptime, dan membuat laporan. |
+| `resource_check.c` | Guest | Membaca nilai memory usage dan load/core dari standard input, lalu menentukan status `PASS`, `WARN`, atau `FAIL`. |
+| `sysinfo_report.txt` | Guest | Menyimpan hasil akhir pemeriksaan dalam bentuk tabel teks. |
+| [`LaporanTugas1_B3.pdf`](./LaporanTugas1_B3.pdf) | Dokumentasi | Menjelaskan pembagian tugas, desain, implementasi, pengujian, dan kesimpulan proyek. |
+
+## Workflow Kode
+
+```mermaid
+flowchart TD
+    A[Host menjalankan vm_ctl.sh] --> B[VBoxManage mengelola lifecycle dan snapshot VM]
+    B --> C[Ubuntu VM berjalan]
+    C --> D[Guest menjalankan sysinfo.sh]
+    D --> E[Ambil OS, kernel, user, proses, virtualisasi, dan uptime]
+    D --> F[Hitung memory usage dan load/core]
+    F -->|pipe melalui stdin| G[resource_check]
+    G --> H[Tentukan PASS, WARN, atau FAIL]
+    E --> I[Gabungkan hasil pemeriksaan]
+    H --> I
+    I --> J[Buat sysinfo_report.txt]
+    J --> K[Host mematikan VM dengan shutdown ACPI]
+```
+
+Alur program secara singkat:
+
+1. Pada host, `vm_ctl.sh` meneruskan perintah pengguna ke `VBoxManage`. VM dapat didaftarkan, diperiksa, dinyalakan secara headless, dibuatkan snapshot, dan dimatikan secara aman dengan sinyal ACPI.
+2. Di dalam guest Ubuntu, `sysinfo.sh` membaca informasi OS/kernel, akun pengguna biasa, jumlah proses, status virtualisasi, dan uptime.
+3. Script menghitung dua metrik Varian B:
+   - **Memory usage** = `(total memory - available memory) / total memory x 100%`.
+   - **Load/core** = `load average 1 menit / jumlah CPU core`.
+4. Kedua nilai dikirim oleh Bash ke binary `resource_check` melalui pipe dan standard input:
+
+   ```bash
+   result=$(echo "$memory_usage $load_ratio" | ./resource_check)
+   ```
+
+5. Program C mengklasifikasikan nilai tersebut berdasarkan threshold berikut.
+
+   | Metrik | PASS | WARN | FAIL |
+   |---|---:|---:|---:|
+   | Memory usage | `< 75%` | `>= 75%` dan `< 90%` | `>= 90%` |
+   | Load/core | `<= 1` | `> 1` dan `<= 2` | `> 2` |
+
+6. `sysinfo.sh` menggabungkan status dari program C dengan informasi sistem lainnya, kemudian menyimpan hasilnya ke `sysinfo_report.txt`.
+
+## Cara Menjalankan
+
+### Sisi host
+
+Jalankan melalui Bash pada komputer yang telah memasang VirtualBox dan menyediakan perintah `VBoxManage`.
 
 ```bash
-./vm_ctl.sh snapshot create <nama_vm> <nama_snapshot>
-./vm_ctl.sh snapshot list <nama_vm>
+./vm_ctl.sh list
+./vm_ctl.sh info "VM-Manager"
+./vm_ctl.sh start "VM-Manager"
+./vm_ctl.sh snapshot create "VM-Manager" "demo-snapshot"
+./vm_ctl.sh snapshot list "VM-Manager"
 ```
 
-`snapshot create` validasi input, lalu nantinya memanggil `VBoxManage snapshot <vm> take <nama>` untuk create snapshot baru dan menampilkan konfirmasi & waktu pembuatan. `snapshot list` memanggil `VBoxManage snapshot <vm> list`, filter nama-nama snapshot dari output mentahnya, lalu ditampilkan dalam format yang bernomor.
+### Sisi guest
 
-**Contoh:**
-
-```
-$ ./vm_ctl.sh snapshot create OS262-Base-Image-amd64 tes-2
-  Membuat snapshot 'tes-2' pada VM 'OS262-Base-Image-amd64'...
-  Snapshot 'tes-2' berhasil dibuat pada 2026-09-13 19:40:00.
-
-$ ./vm_ctl.sh snapshot list OS262-Base-Image-amd64
-  Daftar snapshot VM 'OS262-Base-Image-amd64':
-    1. tes-1
-    2. tes-2
-```
-
-**Contoh error (input kurang):**
-
-```
-$ ./vm_ctl.sh snapshot create OS262-Base-Image-amd64
-Error: format command salah.
-Gunakan: ./vm_ctl.sh snapshot create <nama_vm> <nama_snapshot>
-```
-
-## 2. Basic System Information (sysinfo.sh -> GUEST)
+Kompilasi program C terlebih dahulu, lalu jalankan pemeriksaan sistem.
 
 ```bash
+chmod +x sysinfo.sh
+gcc resource_check.c -o resource_check
+printf "80 1.5\n" | ./resource_check
 ./sysinfo.sh
+cat sysinfo_report.txt
 ```
 
-Bagian saya, sysinfo berfokus mengecek 4 hal dasar yang diwajibkan tugas: info OS & kernel (dari `/etc/os-release` dan `uname -r`), jumlah akun pengguna biasa (dari `/etc/passwd`, UID 1000–59999 supaya akun sistem tidak ikut terhitung), jumlah proses berjalan (`ps -e`), dan deteksi virtualisasi (`systemd-detect-virt`, hasil `oracle` berarti VirtualBox). Keempatnya dapat menjadi bukti bahwa environment yang diperiksa memang VM Ubuntu yang sehat sebelum nantinya digabung dengan hasil Metric 1 & 2 (Bagian Lalita).
+Setelah pemeriksaan guest selesai, VM dapat dimatikan dari host:
 
-**Contoh output:**
+```bash
+./vm_ctl.sh stop "VM-Manager"
+```
 
-```
-$ ./sysinfo.sh
-  OS/Kernel        : Ubuntu 24.04 LTS (Kernel 7.0.0-30-generic)
-  Akun pengguna    : 2 akun
-  Proses berjalan  : 136 proses
-  Virtualisasi     : Terdeteksi (VirtualBox)
-```
+## Ringkasan Laporan PDF
+
+`LaporanTugas1_B3.pdf` menjelaskan pembuatan VM Manager sebagai integrasi antara pengelolaan VM dari host dan monitoring resource dari guest. Bagian host menggunakan `vm_ctl.sh` dan `VBoxManage` untuk lifecycle VM serta snapshot. Bagian guest menggunakan `sysinfo.sh` untuk mengambil informasi sistem dan menghitung memory usage serta load/core sesuai ketentuan Varian B.
+
+Laporan juga membahas penggunaan pipe dan standard input untuk mengirim kedua metrik ke `resource_check.c`. Program C menentukan status `PASS`, `WARN`, atau `FAIL`, lalu hasilnya diambil kembali oleh Bash dan dimasukkan bersama informasi OS, pengguna, proses, virtualisasi, dan uptime ke `sysinfo_report.txt`.
+
+Pengujian dilakukan secara end-to-end: VM dinyalakan dari host, fungsi snapshot diuji, program C dikompilasi dan diuji dengan input contoh, pemeriksaan guest dijalankan, laporan teks diperiksa, lalu VM dimatikan dengan mekanisme shutdown yang aman. Kesimpulan laporan menyatakan bahwa seluruh komponen telah terintegrasi menjadi satu alur kontrol dan monitoring VM. Bagian tautan video presentasi di PDF masih berisi placeholder `LINK VIDEO UNLISTED YOUTUBE`.
